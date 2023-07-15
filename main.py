@@ -106,15 +106,15 @@ def main(args=None, input=None, output=None):
     parser.add_argument(
         "--model",
         metavar="MODEL",
-        default=models.GPT4.name,
-        help=f"Specify the model to use for the main chat (default: {models.GPT4.name})",
+        default=models.CodeBison.name,
+        help=f"Specify the model to use for the main chat (default: {models.CodeBison.name})",
     )
     parser.add_argument(
         "-3",
         action="store_const",
         dest="model",
-        const=models.GPT4.name,
-        help=f"Use {models.GPT4.name} model for the main chat (gpt-4 is better)",
+        const=models.CodeBison.name,
+        help=f"Use {models.CodeBison.name} model for the main chat (gpt-4 is better)",
     )
     parser.add_argument(
         "--edit-format",

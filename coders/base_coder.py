@@ -106,11 +106,11 @@ class Coder:
         openai.api_base = openai_api_base
 
         if not main_model:
-            main_model = models.GPT4
+            main_model = models.CodeBison
 
         if not main_model.always_available:
             if not check_model_availability(main_model):
-                if main_model != models.GPT4:
+                if main_model != models.CodeBison:
                     io.tool_error(
                         f"API key does not support {main_model.name}, falling back to"
                         f" {models.GPT35_16k.name}"
@@ -928,7 +928,7 @@ class Coder:
         try:
             interrupted = self.send(
                 messages,
-                model=models.GPT4.name,
+                model=models.CodeBison.name,
                 silent=True,
             )
         except openai.error.InvalidRequestError:
