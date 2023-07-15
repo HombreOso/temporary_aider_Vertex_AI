@@ -106,7 +106,7 @@ class Coder:
         openai.api_base = openai_api_base
 
         if not main_model:
-            main_model = models.CodeBison
+            main_model = models.GPT4
 
         if not main_model.always_available:
             if not check_model_availability(main_model):
@@ -928,7 +928,7 @@ class Coder:
         try:
             interrupted = self.send(
                 messages,
-                model=models.CodeBison.name,
+                model=models.GPT4.name,
                 silent=True,
             )
         except openai.error.InvalidRequestError:

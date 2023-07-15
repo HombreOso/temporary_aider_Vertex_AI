@@ -35,33 +35,33 @@ class Model:
         # commented out to implement Vertex AI code-bison
 
 
-        # if self.is_gpt4():
-        #     self.edit_format = "diff"
-        #     self.use_repo_map = True
-        #     self.send_undo_reply = True
+        if self.is_gpt4():
+            self.edit_format = "diff"
+            self.use_repo_map = True
+            self.send_undo_reply = True
 
-        #     if tokens == 8:
-        #         self.prompt_price = 0.03
-        #         self.completion_price = 0.06
-        #         self.always_available = True
-        #     elif tokens == 32:
-        #         self.prompt_price = 0.06
-        #         self.completion_price = 0.12
+            if tokens == 8:
+                self.prompt_price = 0.03
+                self.completion_price = 0.06
+                self.always_available = True
+            elif tokens == 32:
+                self.prompt_price = 0.06
+                self.completion_price = 0.12
 
-        #     return
+            return
 
-        # if self.is_gpt35():
-        #     self.edit_format = "whole"
-        #     self.always_available = True
+        if self.is_gpt35():
+            self.edit_format = "whole"
+            self.always_available = True
 
-        #     if tokens == 4:
-        #         self.prompt_price = 0.0015
-        #         self.completion_price = 0.002
-        #     elif tokens == 16:
-        #         self.prompt_price = 0.003
-        #         self.completion_price = 0.004
+            if tokens == 4:
+                self.prompt_price = 0.0015
+                self.completion_price = 0.002
+            elif tokens == 16:
+                self.prompt_price = 0.003
+                self.completion_price = 0.004
 
-        #     return
+            return
         # -------------------------------------------------
 
         # -------------------------------------------------
@@ -99,9 +99,9 @@ class Model:
         return self.name.startswith("codechat-bison")
     # -------------------------------------------------
 
-# GPT4 = Model("gpt-4")
-# GPT35 = Model("gpt-3.5-turbo")
-# GPT35_16k = Model("gpt-3.5-turbo-16k")
+GPT4 = Model("gpt-4")
+GPT35 = Model("gpt-3.5-turbo")
+GPT35_16k = Model("gpt-3.5-turbo-16k")
 
 
 CodeBison = Model("codechat-bison@001")

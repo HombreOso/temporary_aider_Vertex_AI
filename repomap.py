@@ -77,7 +77,7 @@ class RepoMap:
         self,
         map_tokens=1024,
         root=None,
-        main_model=models.CodeBison,
+        main_model=models.GPT4,
         io=None,
         repo_content_prefix=None,
         verbose=False,
