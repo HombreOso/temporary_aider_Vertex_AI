@@ -472,13 +472,13 @@ class Coder:
 
     def run_loop(self):
         # INPUT
-        inp = self.io.get_input(
-            self.root,
-            self.get_inchat_relative_files(),
-            self.get_addable_relative_files(),
-            self.commands,
-        )
-      
+        # inp = self.io.get_input(
+        #     self.root,
+        #     self.get_inchat_relative_files(),
+        #     self.get_addable_relative_files(),
+        #     self.commands,
+        # )
+        inp = self.prompt
 
         self.num_control_c = 0
 
