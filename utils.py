@@ -1,6 +1,10 @@
 from pathlib import Path
 
-from dump import dump  # noqa: F401
+
+# ------------------------------------
+## temporary commented out
+# from .dump import dump  # noqa: F401
+# ------------------------------------
 
 
 def safe_abs_path(res):

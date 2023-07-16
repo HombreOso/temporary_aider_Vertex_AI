@@ -1,7 +1,9 @@
 import difflib
 import sys
 
-from dump import dump  # noqa: F401
+## temporary commented out
+# from .dump import dump  # noqa: F401
+# ------------------------------ 
 
 
 def main():

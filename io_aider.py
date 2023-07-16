@@ -14,12 +14,17 @@ from pygments.util import ClassNotFound
 from rich.console import Console
 from rich.text import Text
 
+## temporary commented out
+# from .dump import dump  # noqa: F401
+# ------------------------------
+
 
 class AutoCompleter(Completer):
-    def __init__(self, root, rel_fnames, addable_rel_fnames, commands):
+    def __init__(self, root, rel_fnames, addable_rel_fnames, commands, encoding):
         self.commands = commands
         self.addable_rel_fnames = addable_rel_fnames
         self.rel_fnames = rel_fnames
+        self.encoding = encoding
 
         fname_to_rel_fnames = defaultdict(list)
         for rel_fname in addable_rel_fnames:
@@ -36,9 +41,9 @@ class AutoCompleter(Completer):
         for rel_fname in rel_fnames:
             self.words.add(rel_fname)
 
-            fname = os.path.join(root, rel_fname)
+            fname = Path(root) / rel_fname
             try:
-                with open(fname, "r") as f:
+                with open(fname, "r", encoding=self.encoding) as f:
                     content = f.read()
             except FileNotFoundError:
                 continue
@@ -47,8 +52,7 @@ class AutoCompleter(Completer):
             except ClassNotFound:
                 continue
             tokens = list(lexer.get_tokens(content))
-            self.words.update(token[1]
-                              for token in tokens if token[0] in Token.Name)
+            self.words.update(token[1] for token in tokens if token[0] in Token.Name)
 
     def get_completions(self, document, complete_event):
         text = document.text_before_cursor
@@ -134,8 +138,7 @@ class InputOutput:
             self.console = Console(force_terminal=False, no_color=True)
 
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        self.append_chat_history(
-            f"\n# aider chat started at {current_time}\n\n")
+        self.append_chat_history(f"\n# aider chat started at {current_time}\n\n")
 
     def read_text(self, filename):
         try:
@@ -156,8 +159,7 @@ class InputOutput:
 
     def get_input(self, root, rel_fnames, addable_rel_fnames, commands):
         if self.pretty:
-            style = dict(
-                style=self.user_input_color) if self.user_input_color else dict()
+            style = dict(style=self.user_input_color) if self.user_input_color else dict()
             self.console.rule(**style)
         else:
             print()
@@ -183,7 +185,8 @@ class InputOutput:
 
         while True:
             completer_instance = AutoCompleter(
-                root, rel_fnames, addable_rel_fnames, commands)
+                root, rel_fnames, addable_rel_fnames, commands, self.encoding
+            )
             if multiline_input:
                 show = ". "
 
@@ -200,8 +203,7 @@ class InputOutput:
                 session_kwargs["style"] = style
 
             if self.input_history_file is not None:
-                session_kwargs["history"] = FileHistory(
-                    self.input_history_file)
+                session_kwargs["history"] = FileHistory(self.input_history_file)
 
             session = PromptSession(**session_kwargs)
             line = session.prompt()
@@ -243,7 +245,12 @@ class InputOutput:
         self.append_chat_history(hist)
 
     def confirm_ask(self, question, default="y"):
+        # -----------------------------------------
+        ## return always True - to avoid intermediate asking
         return True
+        # -----------------------------------------
+
+
         self.num_user_asks += 1
 
         if self.yes is True:
@@ -263,7 +270,10 @@ class InputOutput:
         return res.strip().lower().startswith("y")
 
     def prompt_ask(self, question, default=None):
+        # -----------------------------------------
+        ## return always "yes" - to avoid intermediate asking
         return "yes"
+        # -----------------------------------------
         self.num_user_asks += 1
 
         if self.yes is True:
@@ -288,8 +298,7 @@ class InputOutput:
             self.append_chat_history(hist, linebreak=True, blockquote=True)
 
         message = Text(message)
-        style = dict(
-            style=self.tool_error_color) if self.tool_error_color else dict()
+        style = dict(style=self.tool_error_color) if self.tool_error_color else dict()
         self.console.print(message, **style)
 
     def tool_output(self, *messages, log_only=False):
@@ -300,8 +309,7 @@ class InputOutput:
 
         if not log_only:
             messages = list(map(Text, messages))
-            style = dict(
-                style=self.tool_output_color) if self.tool_output_color else dict()
+            style = dict(style=self.tool_output_color) if self.tool_output_color else dict()
             self.console.print(*messages, **style)
 
     def append_chat_history(self, text, linebreak=False, blockquote=False):
@@ -314,5 +322,5 @@ class InputOutput:
         if not text.endswith("\n"):
             text += "\n"
         if self.chat_history_file is not None:
-            with self.chat_history_file.open("a") as f:
+            with self.chat_history_file.open("a", encoding=self.encoding) as f:
                 f.write(text)

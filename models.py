@@ -1,7 +1,8 @@
 import re
 
 known_tokens = {
-    "codechat-bison@001": 4
+    "gpt-3.5-turbo": 4,
+    "gpt-4": 8,
 }
 
 
@@ -31,10 +32,6 @@ class Model:
 
         self.max_context_tokens = tokens * 1024
 
-        # ---------------------------------------
-        # commented out to implement Vertex AI code-bison
-
-
         if self.is_gpt4():
             self.edit_format = "diff"
             self.use_repo_map = True
@@ -43,7 +40,6 @@ class Model:
             if tokens == 8:
                 self.prompt_price = 0.03
                 self.completion_price = 0.06
-                self.always_available = True
             elif tokens == 32:
                 self.prompt_price = 0.06
                 self.completion_price = 0.12
@@ -62,25 +58,6 @@ class Model:
                 self.completion_price = 0.004
 
             return
-        # -------------------------------------------------
-
-        # -------------------------------------------------
-        # added to implement code-bison
-
-        if self.is_codechat_bison():
-            self.edit_format = "whole"
-            self.use_repo_map = True
-            self.send_undo_reply = True
-
- 
-            self.prompt_price = 0.03
-            self.completion_price = 0.06
-            self.always_available = True
-    
-
-            return
-        # -------------------------------------------------
-
 
         raise ValueError(f"Unsupported model: {name}")
 
@@ -92,16 +69,8 @@ class Model:
 
     def __str__(self):
         return self.name
-    
-    # -------------------------------------------------
-    # added to implement code-bison
-    def is_codechat_bison(self):
-        return self.name.startswith("codechat-bison")
-    # -------------------------------------------------
+
 
 GPT4 = Model("gpt-4")
 GPT35 = Model("gpt-3.5-turbo")
 GPT35_16k = Model("gpt-3.5-turbo-16k")
-
-
-CodeBison = Model("codechat-bison@001")

@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 from collections import Counter, defaultdict
+from pathlib import Path
 
 import networkx as nx
 import tiktoken
@@ -14,9 +15,28 @@ from pygments.lexers import guess_lexer_for_filename
 from pygments.token import Token
 from pygments.util import ClassNotFound
 
-import models
 
-from dump import dump  # noqa: F402
+# ------------------------------
+## temporary make aider a package not a library
+## after developing needed functionality -> package it again and publish to PyPI
+## do not forget to attribute the original library aider from Paul Gauthier
+# ------------------------------
+
+
+## temporary commented out
+# from aider import models
+# ------------------------------
+
+
+# ------------------------------
+## temporary added
+import models
+# ------------------------------
+
+
+## temporary commented out
+# from ..dump import dump  # noqa: F402
+# ------------------------------
 
 
 def to_tree(tags):
@@ -77,7 +97,7 @@ class RepoMap:
         self,
         map_tokens=1024,
         root=None,
-        main_model=models.CodeBison,
+        main_model=models.GPT4,
         io=None,
         repo_content_prefix=None,
         verbose=False,
@@ -100,21 +120,7 @@ class RepoMap:
         else:
             self.use_ctags = False
 
-        # ---------------------------------------------------
-        # commented out - error message:
-        # KeyError: 'Could not automatically map codechat-bison@001 to a tokeniser. 
-        # Please use `tiktok.get_encoding` to explicitly get the tokeniser you expect.'
-
-        # self.tokenizer = tiktoken.encoding_for_model(main_model.name)
-        # ----------------------------------------------------
-
-        # ----------------------------------------------------
-        # added because of the above error
-
-        self.tokenizer = main_model.name
-        # ----------------------------------------------------
-
-        
+        self.tokenizer = tiktoken.encoding_for_model(main_model.name)
         self.repo_content_prefix = repo_content_prefix
 
     def get_repo_map(self, chat_files, other_files):
@@ -151,17 +157,7 @@ class RepoMap:
         if self.use_ctags:
             files_listing = self.get_ranked_tags_map(chat_files, other_files)
             if files_listing:
-                # --------------------------------------------
-                ## commented out since there is no tokenizer for Vertex AI model names
-                # num_tokens = self.token_count(files_listing)
-                # --------------------------------------------
-
-
-                # --------------------------------------------
-                ## added since there is no tokenizer for Vertex AI model names
-                num_tokens = 1024
-                # --------------------------------------------
-
+                num_tokens = self.token_count(files_listing)
                 if self.verbose:
                     self.io.tool_output(f"ctags map: {num_tokens/1024:.1f} k-tokens")
                 ctags_msg = " with selected ctags info"
@@ -169,19 +165,10 @@ class RepoMap:
 
         files_listing = self.get_simple_files_map(other_files)
         ctags_msg = ""
-        # --------------------------------------------
-        ## commented out since there is no tokenizer for Vertex AI model names
-        # num_tokens = self.token_count(files_listing)
-        # --------------------------------------------
-
-
-        # --------------------------------------------
-        ## added since there is no tokenizer for Vertex AI model names
-        num_tokens = 1024
-        # --------------------------------------------
+        num_tokens = self.token_count(files_listing)
         if self.verbose:
             self.io.tool_output(f"simple map: {num_tokens/1024:.1f} k-tokens")
-        if num_tokens <= self.max_map_tokens:
+        if num_tokens < self.max_map_tokens:
             return files_listing, ctags_msg
 
     def get_simple_files_map(self, other_files):
@@ -205,7 +192,10 @@ class RepoMap:
 
     def run_ctags(self, filename):
         # Check if the file is in the cache and if the modification time has not changed
-        file_mtime = os.path.getmtime(filename)
+        file_mtime = self.get_mtime(filename)
+        if file_mtime is None:
+            return []
+
         cache_key = filename
         if cache_key in self.TAGS_CACHE and self.TAGS_CACHE[cache_key]["mtime"] == file_mtime:
             return self.TAGS_CACHE[cache_key]["data"]
@@ -261,19 +251,28 @@ class RepoMap:
         return True
 
     def load_tags_cache(self):
-        self.TAGS_CACHE = Cache(self.TAGS_CACHE_DIR)
+        self.TAGS_CACHE = Cache(Path(self.root) / self.TAGS_CACHE_DIR)
 
     def save_tags_cache(self):
         pass
 
     def load_ident_cache(self):
-        self.IDENT_CACHE = Cache(self.IDENT_CACHE_DIR)
+        self.IDENT_CACHE = Cache(Path(self.root) / self.IDENT_CACHE_DIR)
 
     def save_ident_cache(self):
         pass
 
+    def get_mtime(self, fname):
+        try:
+            return os.path.getmtime(fname)
+        except FileNotFoundError:
+            self.io.tool_error(f"File not found error: {fname}")
+
     def get_name_identifiers(self, fname, uniq=True):
-        file_mtime = os.path.getmtime(fname)
+        file_mtime = self.get_mtime(fname)
+        if file_mtime is None:
+            return set()
+
         cache_key = fname
         if cache_key in self.IDENT_CACHE and self.IDENT_CACHE[cache_key]["mtime"] == file_mtime:
             idents = self.IDENT_CACHE[cache_key]["data"]
@@ -421,15 +420,8 @@ class RepoMap:
         while lower_bound <= upper_bound:
             middle = (lower_bound + upper_bound) // 2
             tree = to_tree(ranked_tags[:middle])
-
-            # --------------------------------------------
-            ## commented out since there is no tokenizer for Vertex AI model names
-            # num_tokens = self.token_count(tree)
-
-            # --------------------------------------------
-            ## added since there is no tokenizer for Vertex AI model names
-            
-            num_tokens = 1024
+            num_tokens = self.token_count(tree)
+            # dump(middle, num_tokens)
 
             if num_tokens < self.max_map_tokens:
                 best_tree = tree
@@ -475,5 +467,10 @@ if __name__ == "__main__":
     rm = RepoMap(root=root)
     repo_map = rm.get_ranked_tags_map(chat_fnames, other_fnames)
 
-    dump(len(repo_map))
+    # ------------------------------
+    ## temporary commented out
+    # dump(len(repo_map))
+    # ------------------------------
+    
+    
     print(repo_map)

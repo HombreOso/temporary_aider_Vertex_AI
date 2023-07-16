@@ -11,7 +11,6 @@ from pathlib import Path, PurePosixPath
 import backoff
 import git
 import openai
-
 import requests
 from jsonschema import Draft7Validator
 from openai.error import APIError, RateLimitError, ServiceUnavailableError, Timeout
@@ -19,44 +18,31 @@ from rich.console import Console, Text
 from rich.live import Live
 from rich.markdown import Markdown
 
-import models
-import prompts
-import utils
+# ------------------------------
+## temporary make aider a package not a library
+## after developing needed functionality -> package it again and publish to PyPI
+## do not forget to attribute the original library aider from Paul Gauthier
+# ------------------------------
+
+
+## temporary commented out
+# from aider import models, prompts, utils
+# from aider.commands import Commands
+# from aider.repomap import RepoMap
+# ------------------------------
+
+
+# ------------------------------
+## temporary added
+import models, prompts, utils
 from commands import Commands
 from repomap import RepoMap
+# ------------------------------
 
 
-# ------------------------------------------
-# import Vertex AI related libraries
-import vertexai
-from vertexai.preview.language_models import CodeChatModel
-# ------------------------------------------
-
-# ------------------------------------------
-file_to_modify_split_str = "@@@"
-# ------------------------------------------
-# ChatModel Vertex AI
-
-
-class ChatModel:
-
-    def __init__(self, project_id, model_id, location):
-        self.project_id = project_id
-        self.model_id = model_id
-        self.location = location
-
-    def initialize(self):
-        """Initialize the chat model."""
-        client = vertexai.init(project=self.project_id, location=self.location)
-        chat_model = CodeChatModel.from_pretrained(self.model_id)
-        return chat_model
-
-    def send_message(self, message, **parameters):
-        chat = self.initialize().start_chat()
-        response = chat.send_message(message, **parameters)
-        # print(dir(response))
-        return response
-# ------------------------------------------
+## temporary commented out
+# from ..dump import dump  # noqa: F401
+# ------------------------------
 
 
 class MissingAPIKeyError(ValueError):
@@ -80,17 +66,13 @@ class Coder:
     functions = None
     total_cost = 0.0
     num_exhausted_context_windows = 0
-    prompt = None
 
     @classmethod
     def create(
         self,
-        inputPrompt,
         main_model,
         edit_format,
         io,
-        openai_api_key,
-        openai_api_base="https://api.openai.com/v1",
         **kwargs,
     ):
         from . import (
@@ -100,17 +82,13 @@ class Coder:
             WholeFileCoder,
             WholeFileFunctionCoder,
         )
-        prompt = inputPrompt
-
-        openai.api_key = openai_api_key
-        openai.api_base = openai_api_base
 
         if not main_model:
-            main_model = models.CodeBison
+            main_model = models.GPT35_16k
 
         if not main_model.always_available:
             if not check_model_availability(main_model):
-                if main_model != models.CodeBison:
+                if main_model != models.GPT4:
                     io.tool_error(
                         f"API key does not support {main_model.name}, falling back to"
                         f" {models.GPT35_16k.name}"
@@ -194,11 +172,10 @@ class Coder:
         if use_git:
             self.set_repo(fnames)
         else:
-            self.abs_fnames = set([str(Path(fname).resolve())
-                                  for fname in fnames])
+            self.abs_fnames = set([str(Path(fname).resolve()) for fname in fnames])
 
         if self.repo:
-            rel_repo_dir = os.path.relpath(self.repo.git_dir, os.getcwd())
+            rel_repo_dir = self.get_rel_repo_dir()
             self.io.tool_output(f"Git repo: {rel_repo_dir}")
         else:
             self.io.tool_output("Git repo: none")
@@ -215,16 +192,14 @@ class Coder:
             )
 
             if self.repo_map.use_ctags:
-                self.io.tool_output(
-                    f"Repo-map: universal-ctags using {map_tokens} tokens")
+                self.io.tool_output(f"Repo-map: universal-ctags using {map_tokens} tokens")
             elif not self.repo_map.has_ctags and map_tokens > 0:
                 self.io.tool_output(
                     f"Repo-map: basic using {map_tokens} tokens"
                     f" ({self.repo_map.ctags_disabled_reason})"
                 )
             else:
-                self.io.tool_output(
-                    "Repo-map: disabled because map_tokens == 0")
+                self.io.tool_output("Repo-map: disabled because map_tokens == 0")
         else:
             self.io.tool_output("Repo-map: disabled")
 
@@ -250,6 +225,12 @@ class Coder:
 
         self.root = utils.safe_abs_path(self.root)
 
+    def get_rel_repo_dir(self):
+        try:
+            return os.path.relpath(self.repo.git_dir, os.getcwd())
+        except ValueError:
+            return self.repo.git_dir
+
     def add_rel_fname(self, rel_fname):
         self.abs_fnames.add(self.abs_root_path(rel_fname))
 
@@ -272,13 +253,10 @@ class Coder:
             fname = fname.resolve()
 
             try:
-                repo_path = git.Repo(
-                    fname, search_parent_directories=True).working_dir
+                repo_path = git.Repo(fname, search_parent_directories=True).working_dir
                 repo_path = utils.safe_abs_path(repo_path)
                 repo_paths.append(repo_path)
-                # print("repo_paths", repo_paths)
             except git.exc.InvalidGitRepositoryError:
-                # print("InvalidGitRepositoryError")
                 pass
 
             if fname.is_dir():
@@ -298,7 +276,6 @@ class Coder:
         self.repo = git.Repo(repo_paths.pop(), odbt=git.GitDB)
 
         self.root = utils.safe_abs_path(self.repo.working_tree_dir)
-        # print("self.repo.working_tree_dir: ", self.repo.working_tree_dir)
 
         new_files = []
         for fname in self.abs_fnames:
@@ -309,17 +286,15 @@ class Coder:
                 new_files.append(relative_fname)
 
         if new_files:
-            rel_repo_dir = os.path.relpath(self.repo.git_dir, os.getcwd())
+            rel_repo_dir = self.get_rel_repo_dir()
 
             self.io.tool_output(f"Files not tracked in {rel_repo_dir}:")
             for fn in new_files:
                 self.io.tool_output(f" - {fn}")
-            # ASK
             if self.io.confirm_ask("Add them?"):
                 for relative_fname in new_files:
                     self.repo.git.add(relative_fname)
-                    self.io.tool_output(
-                        f"Added {relative_fname} to the git repo")
+                    self.io.tool_output(f"Added {relative_fname} to the git repo")
                 show_files = ", ".join(new_files)
                 commit_message = f"Added new files to the git repo: {show_files}"
                 self.repo.git.commit("-m", commit_message, "--no-verify")
@@ -389,6 +364,14 @@ class Coder:
 
         return prompt
 
+    def get_repo_map(self):
+        if not self.repo_map:
+            return
+
+        other_files = set(self.get_all_abs_files()) - set(self.abs_fnames)
+        repo_content = self.repo_map.get_repo_map(self.abs_fnames, other_files)
+        return repo_content
+
     def get_files_messages(self):
         all_content = ""
         if self.abs_fnames:
@@ -399,17 +382,11 @@ class Coder:
 
         all_content += files_content
 
-        other_files = set(self.get_all_abs_files()) - set(self.abs_fnames)
-        if self.repo_map:
-            repo_content = self.repo_map.get_repo_map(
-                self.abs_fnames, other_files)
-            # print("repo_content: ", repo_content)
-            # print("self.abs_fnames: ", self.abs_fnames)
-            # print("other_files: ", other_files)
-            if repo_content:
-                if all_content:
-                    all_content += "\n"
-                all_content += repo_content
+        repo_content = self.get_repo_map()
+        if repo_content:
+            if all_content:
+                all_content += "\n"
+            all_content += repo_content
 
         files_messages = [
             dict(role="user", content=all_content),
@@ -432,8 +409,7 @@ class Coder:
                     new_user_message = self.run_loop()
 
                 while new_user_message:
-                    new_user_message = self.send_new_user_message(
-                        new_user_message)
+                    new_user_message = self.send_new_user_message(new_user_message)
 
                 if with_message:
                     return
@@ -447,9 +423,13 @@ class Coder:
                 return
 
     def should_dirty_commit(self, inp):
-        is_commit_command = inp and inp.startswith("/commit")
-        if is_commit_command:
-            return
+        cmds = self.commands.matching_commands(inp)
+        if cmds:
+            matching_commands, _, _ = cmds
+            if len(matching_commands) == 1:
+                cmd = matching_commands[0]
+                if cmd in ("/exit", "/commit"):
+                    return
 
         if not self.dirty_commits:
             return
@@ -471,27 +451,24 @@ class Coder:
         self.cur_messages = []
 
     def run_loop(self):
-        # INPUT
-        # inp = self.io.get_input(
-        #     self.root,
-        #     self.get_inchat_relative_files(),
-        #     self.get_addable_relative_files(),
-        #     self.commands,
-        # )
-        inp = self.prompt
+        inp = self.io.get_input(
+            self.root,
+            self.get_inchat_relative_files(),
+            self.get_addable_relative_files(),
+            self.commands,
+        )
 
         self.num_control_c = 0
 
         if self.should_dirty_commit(inp):
+            self.io.tool_output("Git repo has uncommitted changes, preparing commit...")
             self.commit(ask=True, which="repo_files")
 
             # files changed, move cur messages back behind the files messages
-            self.move_back_cur_messages(
-                self.gpt_prompts.files_content_local_edits)
+            self.move_back_cur_messages(self.gpt_prompts.files_content_local_edits)
 
             if inp.strip():
-                self.io.tool_output(
-                    "Use up-arrow to retry previous command:", inp)
+                self.io.tool_output("Use up-arrow to retry previous command:", inp)
             return
 
         if not inp:
@@ -512,17 +489,9 @@ class Coder:
     def send_new_user_message(self, inp):
         self.choose_fence()
 
-        # -----------------------------------------------
-        # plus (+) deleted
-
-        # self.cur_messages += [
-        #     dict(role="user", content=inp),
-        # ]
-
         self.cur_messages += [
             dict(role="user", content=inp),
         ]
-        # -----------------------------------------------
 
         main_sys = self.gpt_prompts.main_system
         # if self.main_model.max_context_tokens > 4 * 1024:
@@ -548,15 +517,15 @@ class Coder:
         except openai.error.InvalidRequestError as err:
             if "maximum context length" in str(err):
                 exhausted = True
+            else:
+                raise err
 
         if exhausted:
             self.num_exhausted_context_windows += 1
-            self.io.tool_error(
-                "The chat session is larger than the context window!\n")
+            self.io.tool_error("The chat session is larger than the context window!\n")
             self.commands.cmd_tokens("")
             self.io.tool_error("\nTo reduce token usage:")
-            self.io.tool_error(
-                " - Use /drop to remove unneeded files from the chat session.")
+            self.io.tool_error(" - Use /drop to remove unneeded files from the chat session.")
             self.io.tool_error(" - Use /clear to clear chat history.")
             return
 
@@ -617,8 +586,7 @@ class Coder:
             )
         else:
             if self.repo:
-                self.io.tool_error(
-                    "Warning: no changes found in tracked files.")
+                self.io.tool_output("No changes made to git tracked files.")
             saved_message = self.gpt_prompts.files_content_gpt_no_edits
 
         return saved_message
@@ -638,6 +606,9 @@ class Coder:
         mentioned_rel_fnames = set()
         fname_to_rel_fnames = {}
         for rel_fname in addable_rel_fnames:
+            if rel_fname in words:
+                mentioned_rel_fnames.add(str(rel_fname))
+
             fname = os.path.basename(rel_fname)
             if fname not in fname_to_rel_fnames:
                 fname_to_rel_fnames[fname] = []
@@ -652,7 +623,7 @@ class Coder:
 
         for rel_fname in mentioned_rel_fnames:
             self.io.tool_output(rel_fname)
-        # ASK
+
         if not self.io.confirm_ask("Add these files to the chat?"):
             return
 
@@ -670,33 +641,10 @@ class Coder:
             RateLimitError,
             requests.exceptions.ConnectionError,
         ),
-        max_tries=5,
-        on_backoff=lambda details: print(
-            f"Retry in {details['wait']} seconds."),
+        max_tries=10,
+        on_backoff=lambda details: print(f"Retry in {details['wait']} seconds."),
     )
     def send_with_retries(self, model, messages, functions):
-
-        # --------------------------------------------
-        # Vertex AI
-
-        project_id = "aihackaton230707"
-        model_id = "codechat-bison@001"
-        location = "us-central1"
-
-        parameters = {"temperature": 0.2, "max_output_tokens": 1024}
-
-        model_vertex = ChatModel(project_id, model_id, location)
-        model_vertex.initialize()
-        final_message = " ".join([message["content"] for message in messages])
-
-        response = model_vertex.send_message(final_message, **parameters)
-
-        print("\n\n\n\nfinal message", final_message, "\n\n\n\n\n")
-
-        print("response: ", response.text)
-
-        # ---------------------------------------------
-
         kwargs = dict(
             model=model,
             messages=messages,
@@ -706,27 +654,18 @@ class Coder:
         if functions is not None:
             kwargs["functions"] = self.functions
 
+        # we are abusing the openai object to stash these values
+        if hasattr(openai, "api_deployment_id"):
+            kwargs["deployment_id"] = openai.api_deployment_id
+        if hasattr(openai, "api_engine"):
+            kwargs["engine"] = openai.api_engine
+
         # Generate SHA1 hash of kwargs and append it to chat_completion_call_hashes
         hash_object = hashlib.sha1(json.dumps(kwargs, sort_keys=True).encode())
         self.chat_completion_call_hashes.append(hash_object.hexdigest())
 
-        # ---------------------------------------------------
-        # commented our to return the response of Vertex AI and avoid Open AI authentication attempt
-
-        # res = openai.ChatCompletion.create(**kwargs)
-        # ---------------------------------------------------
-
-        # ---------------------------------------------------
-        # commented our to return the response of Vertex AI
-
-        # return res
-
-        # ---------------------------------------------------
-
-        # ---------------------------------------------------
-        # return the response of Vertex AI
-        return response
-        # ---------------------------------------------------
+        res = openai.ChatCompletion.create(**kwargs)
+        return res
 
     def send(self, messages, model=None, silent=False, functions=None):
         if not model:
@@ -747,14 +686,11 @@ class Coder:
 
         if not silent:
             if self.partial_response_content:
-
-                # OUTPUT
                 self.io.ai_output(self.partial_response_content)
             elif self.partial_response_function_call:
                 # TODO: push this into subclasses
                 args = self.parse_partial_args()
                 if args:
-                    # OUTPUT
                     self.io.ai_output(json.dumps(args, indent=4))
 
         return interrupted
@@ -769,27 +705,17 @@ class Coder:
             self.partial_response_function_call = completion.choices[0].message.function_call
         except AttributeError as func_err:
             show_func_err = func_err
-            # ------------------------------------------
-            # Vertex AI has different response object structure: dummy value
-            self.partial_response_function_call = "0"
-            # ------------------------------------------
 
         try:
             self.partial_response_content = completion.choices[0].message.content
         except AttributeError as content_err:
             show_content_err = content_err
 
-            # ------------------------------------------
-            # Vertex AI has different response object structure: dummy value
-            self.partial_response_content = completion.text
-            # ------------------------------------------
-
         resp_hash = dict(
             function_call=self.partial_response_function_call,
             content=self.partial_response_content,
         )
-        resp_hash = hashlib.sha1(json.dumps(
-            resp_hash, sort_keys=True).encode())
+        resp_hash = hashlib.sha1(json.dumps(resp_hash, sort_keys=True).encode())
         self.chat_completion_response_hashes.append(resp_hash.hexdigest())
 
         if show_func_err and show_content_err:
@@ -797,18 +723,8 @@ class Coder:
             self.io.tool_error(show_content_err)
             raise Exception("No data found in openai response!")
 
-        # ------------------------------------------
-        # Vertex AI has different response object structure: dummy value
-        try:
-            prompt_tokens = completion.usage.prompt_tokens
-            completion_tokens = completion.usage.completion_tokens
-        except AttributeError:
-            prompt_tokens = 1024
-            completion_tokens = 1024
-        # ------------------------------------------
-
-        # prompt_tokens = completion.usage.prompt_tokens
-        # completion_tokens = completion.usage.completion_tokens
+        prompt_tokens = completion.usage.prompt_tokens
+        completion_tokens = completion.usage.completion_tokens
 
         tokens = f"{prompt_tokens} prompt tokens, {completion_tokens} completion tokens"
         if self.main_model.prompt_price:
@@ -829,8 +745,6 @@ class Coder:
         self.io.console.print(tokens)
 
     def show_send_output_stream(self, completion, silent):
-        self.partial_response_content = completion.text
-
         live = None
         if self.pretty and not silent:
             live = Live(vertical_overflow="scroll")
@@ -840,23 +754,8 @@ class Coder:
                 live.start()
 
             for chunk in completion:
-
-                # ----------------------------------------------
-                # commented out because Vertex AI has different response object structure
-
-                # if chunk.choices[0].finish_reason == "length":
-                #     raise ExhaustedContextWindow()
-
-                # ----------------------------------------------
-
-                # ----------------------------------------------
-                # added because Vertex AI has diffrent response object structure
-                try:
-                    if chunk.choices[0].finish_reason == "length":
-                        raise ExhaustedContextWindow()
-                except AttributeError:
-                    pass
-                # ----------------------------------------------
+                if chunk.choices[0].finish_reason == "length":
+                    raise ExhaustedContextWindow()
 
                 try:
                     func = chunk.choices[0].delta.function_call
@@ -884,8 +783,6 @@ class Coder:
                 else:
                     sys.stdout.write(text)
                     sys.stdout.flush()
-        except:
-            pass
         finally:
             if live:
                 self.live_incremental_response(live, True)
@@ -896,8 +793,7 @@ class Coder:
         if not show_resp:
             return
 
-        md = Markdown(show_resp, style=self.assistant_output_color,
-                      code_theme=self.code_theme)
+        md = Markdown(show_resp, style=self.assistant_output_color, code_theme=self.code_theme)
         live.update(md)
 
     def render_incremental_response(self, final):
@@ -906,9 +802,8 @@ class Coder:
     def get_context_from_history(self, history):
         context = ""
         if history:
-            context += "# Context:\n"
             for msg in history:
-                context += msg["role"].upper() + ": " + msg["content"] + "\n"
+                context += "\n" + msg["role"].upper() + ": " + msg["content"] + "\n"
         return context
 
     def get_commit_message(self, diffs, context):
@@ -928,7 +823,7 @@ class Coder:
         try:
             interrupted = self.send(
                 messages,
-                model=models.CodeBison.name,
+                model=models.GPT35.name,
                 silent=True,
             )
         except openai.error.InvalidRequestError:
@@ -991,12 +886,10 @@ class Coder:
             return relative_dirty_files, diffs
 
         if which == "repo_files":
-            all_files = [os.path.join(self.root, f)
-                         for f in self.get_all_relative_files()]
+            all_files = [os.path.join(self.root, f) for f in self.get_all_relative_files()]
             relative_dirty_fnames, diffs = get_dirty_files_and_diffs(all_files)
         elif which == "chat_files":
-            relative_dirty_fnames, diffs = get_dirty_files_and_diffs(
-                self.abs_fnames)
+            relative_dirty_fnames, diffs = get_dirty_files_and_diffs(self.abs_fnames)
         else:
             raise ValueError(f"Invalid value for 'which': {which}")
 
@@ -1021,7 +914,7 @@ class Coder:
                 self.io.tool_output("Git repo has uncommitted changes.")
             else:
                 self.io.tool_output("Files have uncommitted changes.")
-            # PROMPT with return value
+
             res = self.io.prompt_ask(
                 "Commit before the chat proceeds [y/n/commit message]?",
                 default=commit_message,
@@ -1038,7 +931,7 @@ class Coder:
 
         repo.git.add(*relative_dirty_fnames)
 
-        full_commit_message = commit_message + "\n\n" + context
+        full_commit_message = commit_message + "\n\n# Aider chat conversation:\n\n" + context
         repo.git.commit("-m", full_commit_message, "--no-verify")
         commit_hash = repo.head.commit.hexsha[:7]
         self.io.tool_output(f"Commit {commit_hash} {commit_message}")
@@ -1076,7 +969,7 @@ class Coder:
 
     def allowed_to_edit(self, path, write_content=None):
         full_path = self.abs_root_path(path)
-        print("abs_filenames", self.abs_fnames)
+
         if full_path in self.abs_fnames:
             if write_content:
                 self.io.write_text(full_path, write_content)
@@ -1086,7 +979,6 @@ class Coder:
             question = f"Allow creation of new file {path}?"  # noqa: E501
         else:
             question = f"Allow edits to {path} which was not previously provided?"  # noqa: E501
-        # ASK
         if not self.io.confirm_ask(question):
             self.io.tool_error(f"Skipping edit to {path}")
             return
@@ -1101,7 +993,6 @@ class Coder:
         if self.repo:
             tracked_files = set(self.get_tracked_files())
             relative_fname = self.get_rel_fname(full_path)
-            # ASK
             if relative_fname not in tracked_files and self.io.confirm_ask(f"Add {path} to git?"):
                 if not self.dry_run:
                     self.repo.git.add(full_path)
@@ -1114,9 +1005,20 @@ class Coder:
     def get_tracked_files(self):
         if not self.repo:
             return []
+
+        try:
+            commit = self.repo.head.commit
+        except ValueError:
+            return set()
+
+        files = []
+        for blob in commit.tree.traverse():
+            if blob.type == "blob":  # blob is a file
+                files.append(blob.path)
+
         # convert to appropriate os.sep, since git always normalizes to /
-        files = set(self.repo.git.ls_files().splitlines())
         res = set(str(Path(PurePosixPath(path))) for path in files)
+
         return res
 
     apply_update_errors = 0
@@ -1130,13 +1032,11 @@ class Coder:
             err = err.args[0]
             self.apply_update_errors += 1
             if self.apply_update_errors < max_apply_update_errors:
-                self.io.tool_error(
-                    f"Malformed response #{self.apply_update_errors}, retrying...")
+                self.io.tool_error(f"Malformed response #{self.apply_update_errors}, retrying...")
                 self.io.tool_error(str(err))
                 return None, err
             else:
-                self.io.tool_error(
-                    f"Malformed response #{self.apply_update_errors}, aborting.")
+                self.io.tool_error(f"Malformed response #{self.apply_update_errors}, aborting.")
                 return False, None
 
         except Exception as err:
@@ -1145,12 +1045,10 @@ class Coder:
             traceback.print_exc()
             self.apply_update_errors += 1
             if self.apply_update_errors < max_apply_update_errors:
-                self.io.tool_error(
-                    f"Update exception #{self.apply_update_errors}, retrying...")
+                self.io.tool_error(f"Update exception #{self.apply_update_errors}, retrying...")
                 return None, str(err)
             else:
-                self.io.tool_error(
-                    f"Update exception #{self.apply_update_errors}, aborting")
+                self.io.tool_error(f"Update exception #{self.apply_update_errors}, aborting")
                 return False, None
 
         self.apply_update_errors = 0
@@ -1158,8 +1056,7 @@ class Coder:
         if edited:
             for path in sorted(edited):
                 if self.dry_run:
-                    self.io.tool_output(
-                        f"Did not apply edit to {path} (--dry-run)")
+                    self.io.tool_output(f"Did not apply edit to {path} (--dry-run)")
                 else:
                     self.io.tool_output(f"Applied edit to {path}")
 
